@@ -39,8 +39,10 @@ import org.joda.time.format.DateTimeFormatter;
 import java.io.*;
 import java.lang.reflect.InvocationTargetException;
 import java.net.URISyntaxException;
+import java.text.SimpleDateFormat;
 import java.util.*;
 import java.util.Map.Entry;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 
@@ -142,19 +144,39 @@ public class CamusJob extends Configured implements Tool {
 
   private void checkAndCreatePreviousPath(Long time, Properties props, Job job) throws IOException {
     Date now = getDatefromEpoch(time);
-    Date lastDirectoryCreated = getLastDirectoryCreated(job, props);
-    createMissingDirectories(now,lastDirectoryCreated);
+    Date lastDirectoryCreated = null;
+    try {
+      lastDirectoryCreated = getLastDirectoryCreated(job, props);
+    } catch (java.text.ParseException e) {
+      e.printStackTrace();
+    }
+    createMissingDirectories(now,lastDirectoryCreated,job);
   }
 
-  private void createMissingDirectories(Date now, Date lastDirectoryCreated) {
-   // fs.createNewFile(new Path(basePath+"/"+topic+"/test"));
+  private void createMissingDirectories(Date now, Date lastDirectoryCreated, Job job) throws IOException {
+    while(lastDirectoryCreated.before(now)){
+      SimpleDateFormat dateFormatter = new SimpleDateFormat("yyyy/MM/dd/HH/mm");
+      String path = " " +dateFormatter.format(lastDirectoryCreated);
+      FileSystem fs = FileSystem.get(job.getConfiguration());
+      String basePath = props.getProperty("etl.destination.path");
+      String topic = props.getProperty("kafka.whitelist.topics");
+      Path filler = new Path(basePath + "/" + topic);
+      if(fs.exists(filler)){
+        lastDirectoryCreated.setTime(lastDirectoryCreated.getTime() + 60000);
+        continue;
+      }
+      fs.create(filler);
+      lastDirectoryCreated.setTime(lastDirectoryCreated.getTime() + 60000);
+
+    }
   }
 
   private Date getDatefromEpoch(Long time) {
-    return null;
+    Date d = new Date(time);
+    return d;
   }
 
-  private Date getLastDirectoryCreated(Job job, Properties props) throws IOException{
+  private Date getLastDirectoryCreated(Job job, Properties props) throws IOException,java.text.ParseException{
     FileSystem fs = FileSystem.get(job.getConfiguration());
     String basePath = props.getProperty("etl.destination.path");
     String topic = props.getProperty("kafka.whitelist.topics");
@@ -167,23 +189,21 @@ public class CamusJob extends Configured implements Tool {
     while(ritr.hasNext()){
       p = ritr.next().getPath();
     }
-    String pathString = p.toString();
+    return stripOutDateFromPath(p.toString());
 
-    File file = new File("/home/sreedish/filename.txt");
 
-    // if file doesnt exists, then create it
-    if (!file.exists()) {
-      file.createNewFile();
-    }
-    FileWriter fw = new FileWriter(file.getAbsoluteFile());
-    BufferedWriter bw = new BufferedWriter(fw);
-    bw.write(pathString);
-    bw.write("\n");
-    bw.write(p.getName());
-    bw.close();
-    return null;
   }
-
+  public static Date stripOutDateFromPath(String path) throws java.text.ParseException {
+    Pattern r = Pattern.compile("(.*)((19|20)\\d\\d\\/\\d\\d\\/\\d\\d\\/\\d\\d\\/\\d\\d)(.*)");
+    Matcher m = r.matcher(path);
+    String date = null;
+    if(m.find()){
+      date = m.group(2);
+    }
+    SimpleDateFormat dateFormatter = new SimpleDateFormat("yyyy/MM/dd/HH/mm");
+    Date d = dateFormatter.parse(date);
+    return d;
+  }
   public static void populateConf(Properties props, Configuration conf, Logger log) throws IOException {
     for (Object key : props.keySet()) {
       conf.set(key.toString(), props.getProperty(key.toString()));
