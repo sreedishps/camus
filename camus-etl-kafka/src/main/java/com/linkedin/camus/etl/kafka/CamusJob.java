@@ -1,69 +1,25 @@
 package com.linkedin.camus.etl.kafka;
 
-import com.linkedin.camus.etl.kafka.common.DateUtils;
-import com.linkedin.camus.etl.kafka.common.EtlCounts;
-import com.linkedin.camus.etl.kafka.common.EtlKey;
-import com.linkedin.camus.etl.kafka.common.ExceptionWritable;
-import com.linkedin.camus.etl.kafka.common.Source;
+import com.linkedin.camus.etl.kafka.common.*;
 import com.linkedin.camus.etl.kafka.mapred.EtlInputFormat;
 import com.linkedin.camus.etl.kafka.mapred.EtlMapper;
 import com.linkedin.camus.etl.kafka.mapred.EtlMultiOutputFormat;
 import com.linkedin.camus.etl.kafka.mapred.EtlRecordReader;
 import com.linkedin.camus.etl.kafka.reporter.BaseReporter;
-import com.linkedin.camus.etl.kafka.reporter.TimeReporter;
-
-import java.io.BufferedReader;
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.lang.ClassNotFoundException;
-import java.lang.reflect.InvocationTargetException;
-import java.net.URI;
-import java.net.URISyntaxException;
-import java.text.NumberFormat;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Map.Entry;
-import java.util.Properties;
-import java.util.Set;
-import java.util.TreeMap;
-import java.util.Comparator;
-import java.util.Arrays;
-import java.util.regex.Pattern;
-
-import org.apache.commons.cli.CommandLine;
-import org.apache.commons.cli.CommandLineParser;
-import org.apache.commons.cli.HelpFormatter;
-import org.apache.commons.cli.OptionBuilder;
+import org.apache.commons.cli.*;
 import org.apache.commons.cli.Options;
-import org.apache.commons.cli.PosixParser;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.conf.Configured;
 import org.apache.hadoop.filecache.DistributedCache;
-import org.apache.hadoop.fs.ContentSummary;
-import org.apache.hadoop.fs.FSDataInputStream;
-import org.apache.hadoop.fs.FileStatus;
+import org.apache.hadoop.fs.*;
 import org.apache.hadoop.fs.FileSystem;
-import org.apache.hadoop.fs.Path;
-import org.apache.hadoop.fs.PathFilter;
 import org.apache.hadoop.io.SequenceFile;
-import org.apache.hadoop.mapred.JobClient;
-import org.apache.hadoop.mapred.JobConf;
-import org.apache.hadoop.mapred.JobID;
-import org.apache.hadoop.mapred.TIPStatus;
+import org.apache.hadoop.mapred.*;
 import org.apache.hadoop.mapred.TaskCompletionEvent;
 import org.apache.hadoop.mapred.TaskReport;
-import org.apache.hadoop.mapreduce.Counter;
-import org.apache.hadoop.mapreduce.CounterGroup;
+import org.apache.hadoop.mapreduce.*;
 import org.apache.hadoop.mapreduce.Counters;
 import org.apache.hadoop.mapreduce.InputFormat;
-import org.apache.hadoop.mapreduce.Job;
 import org.apache.hadoop.mapreduce.JobContext;
 import org.apache.hadoop.mapreduce.OutputFormat;
 import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
@@ -79,6 +35,13 @@ import org.codehaus.jackson.type.TypeReference;
 import org.joda.time.DateTime;
 import org.joda.time.DateTimeZone;
 import org.joda.time.format.DateTimeFormatter;
+
+import java.io.*;
+import java.lang.reflect.InvocationTargetException;
+import java.net.URISyntaxException;
+import java.util.*;
+import java.util.Map.Entry;
+import java.util.regex.Pattern;
 
 
 public class CamusJob extends Configured implements Tool {
@@ -170,8 +133,55 @@ public class CamusJob extends Configured implements Tool {
       job.getConfiguration().set("mapreduce.job.credentials.binary", System.getenv("HADOOP_TOKEN_FILE_LOCATION"));
     }
 
+    job.getConfiguration().setLong("partition.time", System.currentTimeMillis());
+    checkAndCreatePreviousPath(job.getConfiguration().getLong("partition.time",0),props,job);
+
     this.hadoopJob = job;
     return job;
+  }
+
+  private void checkAndCreatePreviousPath(Long time, Properties props, Job job) throws IOException {
+    Date now = getDatefromEpoch(time);
+    Date lastDirectoryCreated = getLastDirectoryCreated(job, props);
+    createMissingDirectories(now,lastDirectoryCreated);
+  }
+
+  private void createMissingDirectories(Date now, Date lastDirectoryCreated) {
+   // fs.createNewFile(new Path(basePath+"/"+topic+"/test"));
+  }
+
+  private Date getDatefromEpoch(Long time) {
+    return null;
+  }
+
+  private Date getLastDirectoryCreated(Job job, Properties props) throws IOException{
+    FileSystem fs = FileSystem.get(job.getConfiguration());
+    String basePath = props.getProperty("etl.destination.path");
+    String topic = props.getProperty("kafka.whitelist.topics");
+    if(!fs.exists(new Path(basePath + "/" + topic))){
+      return null;
+    }
+    RemoteIterator<LocatedFileStatus> ritr = fs.listFiles(new Path(basePath + "/" + topic), true);
+    //get the last path
+    Path p = null;
+    while(ritr.hasNext()){
+      p = ritr.next().getPath();
+    }
+    String pathString = p.toString();
+
+    File file = new File("/home/sreedish/filename.txt");
+
+    // if file doesnt exists, then create it
+    if (!file.exists()) {
+      file.createNewFile();
+    }
+    FileWriter fw = new FileWriter(file.getAbsoluteFile());
+    BufferedWriter bw = new BufferedWriter(fw);
+    bw.write(pathString);
+    bw.write("\n");
+    bw.write(p.getName());
+    bw.close();
+    return null;
   }
 
   public static void populateConf(Properties props, Configuration conf, Logger log) throws IOException {
@@ -682,6 +692,10 @@ public class CamusJob extends Configured implements Tool {
 
   public static String getKafkaFetchRequestBufferSize(JobContext job) {
     return job.getConfiguration().get(KAFKA_FETCH_BUFFER_SIZE);
+  }
+
+  public static String getPartitionTime(JobContext job) {
+    return job.getConfiguration().get("partition.time");
   }
 
   public static int getKafkaTimeoutValue(JobContext job) {

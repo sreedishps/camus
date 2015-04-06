@@ -4,7 +4,6 @@ import com.linkedin.camus.etl.IEtlKey;
 import com.linkedin.camus.etl.Partitioner;
 import com.linkedin.camus.etl.kafka.common.DateUtils;
 import com.linkedin.camus.etl.kafka.mapred.EtlMultiOutputFormat;
-
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.mapreduce.JobContext;
 import org.joda.time.DateTime;
@@ -25,7 +24,7 @@ import org.joda.time.format.DateTimeFormatter;
  */
 public class DefaultPartitioner extends Partitioner {
 
-  protected static final String OUTPUT_DATE_FORMAT = "YYYY/MM/dd/HH";
+  protected static final String OUTPUT_DATE_FORMAT = "YYYY/MM/dd/HH/mm";
   //protected DateTimeZone outputDateTimeZone = null;
   protected DateTimeFormatter outputDateFormatter = null;
 
@@ -39,8 +38,10 @@ public class DefaultPartitioner extends Partitioner {
   public String generatePartitionedPath(JobContext context, String topic, String encodedPartition) {
     StringBuilder sb = new StringBuilder();
     sb.append(topic).append("/");
-    sb.append(EtlMultiOutputFormat.getDestPathTopicSubDir(context)).append("/");
-    DateTime bucket = new DateTime(Long.valueOf(encodedPartition));
+    //sb.append(EtlMultiOutputFormat.getDestPathTopicSubDir(context)).append("/");
+    //DateTime bucket = new DateTime(Long.valueOf(encodedPartition));
+
+    DateTime bucket = new DateTime(context.getConfiguration().getLong("partition.time",0L));
     sb.append(bucket.toString(outputDateFormatter));
 
     return sb.toString();
@@ -75,9 +76,10 @@ public class DefaultPartitioner extends Partitioner {
   @Override
   public void setConf(Configuration conf) {
     if (conf != null) {
-      outputDateFormatter =
-          DateUtils.getDateTimeFormatter(OUTPUT_DATE_FORMAT,
-              DateTimeZone.forID(conf.get(EtlMultiOutputFormat.ETL_DEFAULT_TIMEZONE, "America/Los_Angeles")));
+//      outputDateFormatter =
+//          DateUtils.getDateTimeFormatter(OUTPUT_DATE_FORMAT,
+//              DateTimeZone.forID(conf.get(EtlMultiOutputFormat.ETL_DEFAULT_TIMEZONE, "America/Los_Angeles")));
+      outputDateFormatter =  DateUtils.getDateTimeFormatter(OUTPUT_DATE_FORMAT, DateTimeZone.UTC);
     }
 
     super.setConf(conf);
